@@ -4,52 +4,68 @@ import random
 
 app = Flask(__name__)
 
-# Token Mercado Pago
-sdk = mercadopago.SDK("APP_USR-5699245059856282-101519-9ec457838f1383fe9049e9c4618327b2-555644478")
+# ===== TOKEN MERCADO PAGO =====
+sdk = mercadopago.SDK("APP_USR-5699245059856282-101519-9ec457838f1383fe9049e9c4618327b2-555644478")  # coloque seu token aqui
 
-# Mensagens engraçadas que mudam a cada venda
-messages = [
-    "🍹 Pagamento confirmado! Preparando sua bebida...",
-    "🥤 Suco a caminho! Segura o copo!",
-    "🍸 Bebida liberada! Aproveite!",
-    "🍺 Cheers! Seu pedido tá na bomba!",
-    "🍹 Obrigado! Mais uma bebida chegando!"
-]
+# ===== ROTA PRINCIPAL =====
+@app.route('/')
+def home():
+    return jsonify({"status": "Servidor rodando!"})
 
-@app.route("/gerar_qr", methods=["POST"])
+# ===== GERAR QR CODE PARA PAGAMENTO =====
+@app.route('/gerar_qr', methods=['GET'])
 def gerar_qr():
-    # Recebe valor da venda (em centavos)
-    data = request.get_json()
-    amount = data.get("amount", 100)  # default R$1,00 se não passar
+    try:
+        # Aqui você cria um pagamento de exemplo (R$ 5,00 por teste)
+        preference_data = {
+            "items": [
+                {
+                    "title": "Bebida",
+                    "quantity": 1,
+                    "unit_price": 5.00
+                }
+            ],
+            "back_urls": {
+                "success": "https://bebidas-1.onrender.com/success",
+                "failure": "https://bebidas-1.onrender.com/failure",
+                "pending": "https://bebidas-1.onrender.com/pending"
+            },
+            "auto_return": "approved"
+        }
 
-    # Cria preferência no Mercado Pago
-    preference_data = {
-        "items": [{"title": "Bebida", "quantity": 1, "unit_price": amount / 100}],
-        "back_urls": {"success": "https://bebidas-1.onrender.com", "failure": "https://bebidas-1.onrender.com"},
-        "auto_return": "approved"
-    }
-    preference_response = sdk.preference().create(preference_data)
-    qr_url = preference_response["response"]["init_point"]
+        preference_response = sdk.preference().create(preference_data)
+        preference = preference_response["response"]
+        qr_link = preference["sandbox_init_point"]  # sandbox para testes, depois mudar para init_point
 
-    # Escolhe mensagem engraçada
-    msg = random.choice(messages)
+        # Mensagem divertida que muda a cada venda
+        mensagens = [
+            "Pagamento confirmado! Preparando sua bebida 🍹",
+            "Bebida a caminho! 😎",
+            "Bebida liberada! Aproveite! 🥳"
+        ]
+        mensagem = random.choice(mensagens)
 
-    return jsonify({"qr_url": qr_url, "message": msg})
+        return jsonify({
+            "mensagem": mensagem,
+            "qr_base64": qr_link  # aqui o ESP32 vai abrir o link ou gerar QR
+        })
 
-@app.route("/check_payment", methods=["POST"])
-def check_payment():
-    # Recebe payment_id do ESP32 (Mercado Pago webhook alternativo)
-    data = request.get_json()
-    payment_id = data.get("payment_id")
-    if not payment_id:
-        return jsonify({"status": "error", "message": "Sem payment_id"}), 400
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
 
-    payment = sdk.payment().get(payment_id)
-    status = payment["response"]["status"]
-    if status == "approved":
-        return jsonify({"status": "approved"})
-    else:
-        return jsonify({"status": status})
+# ===== ROTAS DE TESTE =====
+@app.route('/success')
+def success():
+    return "Pagamento aprovado! 🍹"
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+@app.route('/failure')
+def failure():
+    return "Pagamento falhou 😢"
+
+@app.route('/pending')
+def pending():
+    return "Pagamento pendente ⏳"
+
+# ===== MAIN =====
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
